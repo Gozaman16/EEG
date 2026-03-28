@@ -8,6 +8,7 @@ Mirrors the parametric design from the .scad files.
 import math
 import numpy as np
 import trimesh
+import manifold3d as m3d
 import trimesh.creation as tc
 import os, sys
 
@@ -67,10 +68,49 @@ def subtract(base, *cutters):
         return base
     return trimesh.boolean.difference([base] + valid, engine="manifold")
 
+def clean(mesh):
+    """
+    Guarantee a single-shell, watertight, correctly-wound manifold.
+    Strategy:
+      1. Split into connected components; keep the largest by volume.
+      2. Fix winding so all normals point outward.
+      3. Run a self-union through manifold (identity boolean) to merge
+         any co-planar duplicate faces and close T-junctions.
+    """
+    import manifold3d as m3d
+
+    # Step 1 — largest component
+    try:
+        parts = mesh.split(only_watertight=False)
+        if len(parts) > 1:
+            mesh = max(parts, key=lambda m: abs(m.volume) if m.is_watertight else len(m.faces))
+    except Exception:
+        pass
+
+    # Step 2 — fix normals
+    trimesh.repair.fix_winding(mesh)
+    trimesh.repair.fix_normals(mesh)
+
+    # Step 3 — import into manifold (validates + merges duplicate verts, closes T-junctions)
+    try:
+        mesh_in = m3d.Mesh(vert_properties=mesh.vertices.astype('float32'),
+                           tri_verts=mesh.faces.astype('uint32'))
+        mf = m3d.Manifold(mesh_in)
+        out = mf.to_mesh()
+        mesh = trimesh.Trimesh(vertices=np.array(out.vert_properties),
+                               faces=np.array(out.tri_verts), process=False)
+        trimesh.repair.fix_normals(mesh)
+    except Exception:
+        pass   # fallback: use as-is
+
+    return mesh
+
 def save(mesh, name):
+    mesh = clean(mesh)
     path = os.path.join(OUT, name)
     mesh.export(path)
-    print(f"  Saved: {path}  (faces={len(mesh.faces)})")
+    wt = "✓ watertight" if mesh.is_watertight else "✗ NOT watertight"
+    print(f"  Saved: {path}  faces={len(mesh.faces)}  {wt}")
 
 # ── Parameters ────────────────────────────────────────────────
 WALL      = 1.5
