@@ -573,3 +573,314 @@ def headband_neonatal():
 save(headband_neonatal(), "headband_mount_neonatal.stl")
 
 print("\n✓  All STL files generated in:", OUT)
+
+# ══════════════════════════════════════════════════════════════
+# V2 MODIFICATIONS — EpiScreen Modular Pad + Impedance Ring
+# ══════════════════════════════════════════════════════════════
+#
+# New features vs v1:
+#   Bottom mold:
+#     – Retention groove ring   (11.5 mm dia, 0.5 mm wide, 0.3 mm deep protrusion)
+#     – Impedance ref ring slot (14.0 mm dia, 0.8 mm wide, 0.5 mm deep groove)
+#     – Second cable exit       (2 mm wide, offset from primary)
+#     – Micro-dot texture       (replaces concentric rings)
+#   Top mold: unchanged from v1
+#   New: pad disc mold          (open-face, 12 mm dia × 2 mm disc)
+# ══════════════════════════════════════════════════════════════
+
+# ── helper: watertight ring mesh via manifold ─────────────────
+def ring_mesh(r_inner, r_outer, h, x=0, y=0, z=0):
+    """Annular cylinder (ring) guaranteed watertight via manifold subtraction."""
+    outer = cyl(r_outer, h)
+    inner = cyl(r_inner, h + 0.04)   # slight oversize so faces don't coincide
+    ring  = subtract(outer, inner)
+    return move(ring, x=x, y=y, z=z)
+
+# ── helper: micro-dot texture field ──────────────────────────
+def micro_dot_field(cavity_r, base_z, dot_r=0.12, dot_h=0.15, spacing=0.50,
+                    seed=42):
+    """
+    Hex-packed grid of small cylinder protrusions on the mold floor.
+    These protrude INTO the cavity → create dimples in the electrode surface.
+    Dot diameter 0.24 mm, depth 0.15 mm — at SLA resolution limit.
+    NOTE: if printer resolution is ≥0.05 mm layer / ≤0.10 mm XY, these
+    will print. Otherwise press P400 sandpaper onto mold floor before use.
+    """
+    rng = np.random.default_rng(seed)
+    sqrt3 = math.sqrt(3)
+    x_step = spacing
+    y_step = spacing * sqrt3 / 2
+
+    dot_meshes = []
+    for iy in range(-int(cavity_r / y_step) - 2,
+                     int(cavity_r / y_step) + 3):
+        for ix in range(-int(cavity_r / x_step) - 2,
+                         int(cavity_r / x_step) + 3):
+            x = ix * x_step + (iy % 2) * (x_step / 2)
+            y = iy * y_step
+            # small jitter for bio-inspired irregular look
+            x += rng.uniform(-0.10, 0.10)
+            y += rng.uniform(-0.10, 0.10)
+            # keep inside the cavity circle with margin
+            if math.sqrt(x*x + y*y) > cavity_r - dot_r - 0.2:
+                continue
+            d = cyl(dot_r, dot_h + 0.02)
+            d = move(d, x=x, y=y, z=base_z)
+            dot_meshes.append(d)
+
+    if not dot_meshes:
+        return None
+    # union all dots into one mesh → single subtraction operation
+    return trimesh.boolean.union(dot_meshes, engine="manifold")
+
+
+# ══════════════════════════════════════════════════════════════
+# V2 — EpiScreen bottom mold
+# ══════════════════════════════════════════════════════════════
+print("\n[V2-1/3] EpiScreen v2 bottom mold...")
+
+def episcreen_v2_bottom():
+    body_h = EP_BOT_H + WALL
+    base   = cyl(EP_MOLD_OD/2, body_h)
+
+    # Main cavity (with draft)
+    draft_r = math.tan(math.radians(DRAFT)) * EP_BOT_H
+    cavity  = move(cyl(EP_OD/2 + draft_r, EP_BOT_H + 0.05), z=WALL)
+
+    # Spiral exposure platform
+    plat = move(cyl(EP_SPIRAL_D/2, EP_SPIRAL_H), z=WALL - 0.05)
+
+    # FR-4 shelf cut (wider above shelf level)
+    fr4_cut = move(cyl(EP_FR4_D/2 + EP_FR4_LIP, EP_BOT_H - EP_FR4_Z + 0.1),
+                   z=WALL + EP_FR4_Z)
+
+    # Microchannel guide holes
+    mch_cuts = []
+    start_r = EP_RES_OD / 2
+    start_z = WALL + EP_FR4_Z + EP_FR4_T + EP_RES_H / 2
+    for i in range(EP_MCH_N):
+        wire = cyl(EP_MCH_D / 2, 20)
+        wire = rot_y(wire, EP_MCH_ANG)
+        wire = move(wire, x=start_r, z=start_z - 5)
+        wire = rot_z(wire, i * 120 + 30)
+        mch_cuts.append(wire)
+
+    # Alignment pin holes (4×)
+    pin_holes = []
+    for (px, py) in pin_positions(EP_MOLD_OD):
+        h = cyl((PIN_D + CLEARANCE) / 2, PIN_H + 0.1)
+        h = move(h, x=px, y=py, z=body_h - PIN_H)
+        pin_holes.append(h)
+
+    # Primary cable exit notch (3 mm wide)
+    cable_1 = box(EP_CABLE_D + 0.2, EP_CABLE_W,
+                  EP_BOT_H - EP_FR4_Z,
+                  x=EP_MOLD_OD/2 - EP_CABLE_D,
+                  y=-EP_CABLE_W/2,
+                  z=WALL + EP_FR4_Z)
+
+    # Secondary cable exit (2 mm wide, for impedance ring wire)
+    cable_2 = box(EP_CABLE_D + 0.2, 2.0,
+                  EP_BOT_H - EP_FR4_Z,
+                  x=EP_MOLD_OD/2 - EP_CABLE_D,
+                  y=EP_CABLE_W/2 + 0.5,          # offset from primary, +Y side
+                  z=WALL + EP_FR4_Z)
+
+    # ── V2 NEW: Impedance reference ring groove ───────────────
+    # Annular groove at 14 mm dia (r=7), 0.8 mm wide, 0.5 mm deep
+    # Cut INTO the cavity floor → wire ring sits here during casting
+    imp_ring_r_in  = 14.0/2 - 0.8/2    # 6.6 mm
+    imp_ring_r_out = 14.0/2 + 0.8/2    # 7.4 mm
+    imp_ring = ring_mesh(imp_ring_r_in, imp_ring_r_out,
+                         0.5 + 0.05,
+                         z=WALL - 0.5)  # starts 0.5 mm below cavity floor
+
+    # ── V2 NEW: Micro-dot texture field on cavity floor ───────
+    # Protrudes UP into cavity from floor → dimples in electrode skin surface
+    texture = micro_dot_field(cavity_r=EP_BOT_CAV_D/2 - 0.3,
+                               base_z=WALL,
+                               dot_r=0.12, dot_h=0.15, spacing=0.50)
+
+    # ── Subtract everything from body ─────────────────────────
+    cuts = [cavity, plat, fr4_cut, imp_ring, cable_1, cable_2,
+            *mch_cuts, *pin_holes]
+    body_cut = subtract(base, *cuts)
+
+    # ── V2 NEW: Retention groove ring ─────────────────────────
+    # PROTRUSION on cavity floor at 11.5 mm dia → groove on electrode face
+    # Silicone fills around it → electrode gets an annular groove
+    # Pad disc lip (0.3 mm tall) snaps into this groove
+    ret_ring = ring_mesh(r_inner=11.5/2 - 0.5/2,   # 5.5 mm
+                          r_outer=11.5/2 + 0.5/2,   # 6.0 mm
+                          h=0.3,
+                          z=WALL)   # sits on cavity floor, protrudes into cavity
+
+    result = union(body_cut, ret_ring)
+
+    # ── Add texture protrusions (union after body is built) ───
+    if texture is not None:
+        result = union(result, move(texture, z=0))
+
+    return result
+
+save(episcreen_v2_bottom(), "episcreen_v2_mold_bottom.stl")
+
+
+# ══════════════════════════════════════════════════════════════
+# V2 — EpiScreen top mold (unchanged from v1 — re-export)
+# ══════════════════════════════════════════════════════════════
+print("\n[V2-2/3] EpiScreen v2 top mold (copy of v1)...")
+
+def episcreen_v2_top():
+    """Top mold unchanged. Re-exported as v2 name for matching pair."""
+    body   = cyl(EP_MOLD_OD/2, EP_TOP_H)
+    top_cav_h = EP_H - EP_BOT_H
+    cavity = move(cyl(EP_OD/2, top_cav_h + 0.1), z=WALL)
+    res_inner = move(cyl(EP_RES_ID/2 - CLEARANCE/2, EP_RES_H + 0.1),
+                     z=WALL - 0.05)
+    pour   = move(cyl(EP_POUR_D/2, EP_POUR_D + 0.1),
+                  z=EP_TOP_H - EP_POUR_D)
+    fill   = move(cyl(1.0, WALL + 6.1),
+                  x=EP_RES_OD/2 - 2, z=EP_TOP_H - 6)
+    cable_1 = box(EP_CABLE_D + 0.2, EP_CABLE_W + 1, EP_TOP_H - WALL,
+                  x=EP_MOLD_OD/2 - EP_CABLE_D,
+                  y=-(EP_CABLE_W+1)/2, z=WALL)
+    # Second cable exit slot mirrored into top
+    cable_2 = box(EP_CABLE_D + 0.2, 2.0, EP_TOP_H - WALL,
+                  x=EP_MOLD_OD/2 - EP_CABLE_D,
+                  y=EP_CABLE_W/2 + 0.5, z=WALL)
+
+    vent_cuts = []
+    for a in [90, 270]:
+        v  = cyl(VENT_D/2, WALL + 5)
+        vx = (EP_MOLD_OD/2 - WALL - 2) * math.cos(math.radians(a))
+        vy = (EP_MOLD_OD/2 - WALL - 2) * math.sin(math.radians(a))
+        v  = move(v, x=vx, y=vy, z=EP_TOP_H - 4)
+        vent_cuts.append(v)
+
+    base = subtract(body, cavity, res_inner, pour, fill,
+                    cable_1, cable_2, *vent_cuts)
+
+    pins = []
+    for (px, py) in pin_positions(EP_MOLD_OD):
+        p = cyl(PIN_D/2, PIN_H + WALL)
+        p = move(p, x=px, y=py, z=0)
+        pins.append(p)
+
+    return union(base, *pins)
+
+save(episcreen_v2_top(), "episcreen_v2_mold_top.stl")
+
+
+# ══════════════════════════════════════════════════════════════
+# V2 — Pad Disc Mold  (open-face, single piece)
+# ══════════════════════════════════════════════════════════════
+#
+# The disc is cast skin-contact-side DOWN (on the mold floor).
+# The mold floor defines the disc's skin-contact bottom surface.
+# The open top is poured level → becomes the disc top (contact-pad side).
+#
+# Disc geometry when used (from bottom to top):
+#   Bottom (skin):  flat, micro-textured, Ø12 mm
+#   Edge:           0.5 mm wide × 0.3 mm tall retaining lip
+#   Centre hole:    Ø1.5 mm through-hole for electrolyte flow
+#   Top (contact):  8 mm Ø raised contact pad, 0.3 mm above edges
+#
+# Mold cavity (floor = disc bottom / skin side):
+#   • Cavity inner Ø = 12.0 mm, depth at edges = 2.0 mm
+#   • Centre floor recess: Ø8 mm, 0.3 mm deeper → disc centre is
+#     2.3 mm thick → top surface 0.3 mm higher than edges (raised pad)
+#   • Centre pin Ø1.5 mm (through-hole former), height ≥ 2.5 mm
+#   • Micro-dot texture on floor (creates texture on disc skin surface)
+#   • Annular groove in side wall at rim: 0.5 mm wide × 0.3 mm deep
+#     → creates retaining lip on disc edge
+#   • Notch in side wall: 1 mm wide × 0.5 mm deep (fingernail grip)
+#
+# TRANSLUCENT SILICONE NOTE:
+#   Use clear / translucent silicone (e.g. Smooth-On Ecoflex 00-20 Clear
+#   or Dragon Skin 10 NV) so that reservoir fill level is visible through
+#   the body. Pigment addition is optional (light blue tint recommended
+#   for branding). The pad disc itself should be clear.
+# ══════════════════════════════════════════════════════════════
+print("\n[V2-3/3] Pad disc mold...")
+
+# Disc parameters
+PAD_DISC_D    = 12.0   # disc outer diameter
+PAD_DISC_H    = 2.0    # disc thickness at edge
+PAD_PAD_D     = 8.0    # contact pad diameter
+PAD_PAD_RISE  = 0.3    # contact pad height above disc edge
+PAD_LIP_W     = 0.5    # retaining lip width
+PAD_LIP_H     = 0.3    # retaining lip height
+PAD_HOLE_D    = 1.5    # electrolyte flow through-hole
+PAD_NOTCH_W   = 1.0    # fingernail notch width
+PAD_NOTCH_D   = 0.5    # fingernail notch depth
+
+MOLD_WALL_SM  = 2.0    # mold outer wall thickness (small mold)
+PAD_MOLD_OD   = PAD_DISC_D + 2 * MOLD_WALL_SM   # 16 mm
+PAD_MOLD_H    = PAD_DISC_H + PAD_PAD_RISE + MOLD_WALL_SM  # 4.8 mm
+
+def pad_disc_mold():
+    # ── Outer body ────────────────────────────────────────────
+    body = cyl(PAD_MOLD_OD/2, PAD_MOLD_H)
+
+    # ── Main cavity (edge-thickness depth, full disc diameter) ─
+    # The mold floor is at z = MOLD_WALL_SM (bottom wall)
+    cav_depth_edge   = PAD_DISC_H            # 2.0 mm at edges
+    cav_depth_centre = PAD_DISC_H + PAD_PAD_RISE  # 2.3 mm at centre
+
+    floor_z = MOLD_WALL_SM                   # bottom of cavity
+    rim_z   = floor_z + cav_depth_edge       # where you pour to (rim)
+
+    # Edge cavity (full disc diameter, edge depth)
+    edge_cav = move(cyl(PAD_DISC_D/2, cav_depth_edge + 0.02),
+                    z=floor_z - 0.01)
+
+    # Centre recess (extra 0.3 mm deeper, 8 mm dia)
+    # → disc gets 0.3 mm more silicone at centre → raised contact pad
+    centre_recess = move(cyl(PAD_PAD_D/2, PAD_PAD_RISE + 0.02),
+                         z=floor_z - PAD_PAD_RISE - 0.01)
+
+    # ── Centre pin (through-hole former) ─────────────────────
+    # Extends from the deepest floor point to above the pour surface
+    pin_bot_z = floor_z - PAD_PAD_RISE
+    pin_height = cav_depth_centre + 0.5      # sticks 0.5 mm above pour
+    pin = move(cyl(PAD_HOLE_D/2, pin_height + 0.02), z=pin_bot_z - 0.01)
+
+    # ── Lip groove in cavity side wall ────────────────────────
+    # Cut an annular groove into the inner wall at rim height
+    # → when silicone cures and is demolded, the lip stays on disc
+    # Groove: inner wall at r = PAD_DISC_D/2, groove goes outward 0.5 mm
+    lip_groove_r_in  = PAD_DISC_D/2                  # flush with cavity wall
+    lip_groove_r_out = PAD_DISC_D/2 + PAD_LIP_W      # 0.5 mm into mold wall
+    lip_groove = ring_mesh(r_inner=lip_groove_r_in,
+                            r_outer=lip_groove_r_out,
+                            h=PAD_LIP_H + 0.02,
+                            z=rim_z - PAD_LIP_H)
+
+    # ── Fingernail notch in side wall ─────────────────────────
+    # Rectangular slot through the outer wall at one point on circumference
+    notch = box(MOLD_WALL_SM + 0.2,          # radial depth (through wall)
+                PAD_NOTCH_W,                  # angular width
+                cav_depth_edge,               # full cavity height
+                x=PAD_DISC_D/2 - 0.1,        # starts just inside cavity wall
+                y=-PAD_NOTCH_W/2,
+                z=floor_z)
+
+    # ── Micro-dot texture on cavity floor (skin-contact side) ─
+    texture = micro_dot_field(cavity_r=PAD_DISC_D/2 - 0.3,
+                               base_z=floor_z,
+                               dot_r=0.12, dot_h=0.15, spacing=0.45)
+
+    # ── Boolean operations ────────────────────────────────────
+    result = subtract(body, edge_cav, centre_recess, pin,
+                      lip_groove, notch)
+
+    # Texture protrusions (union, pointing into cavity)
+    if texture is not None:
+        result = union(result, move(texture, z=0))
+
+    return result
+
+save(pad_disc_mold(), "pad_disc_mold.stl")
+
+print("\n✓  V2 STL files generated in:", OUT)
