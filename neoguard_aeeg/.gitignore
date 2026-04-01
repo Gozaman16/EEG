@@ -1,0 +1,3 @@
+# Large generated data files (regeneratable via run_pipeline.py)
+raw_eeg.csv
+aeeg_trend.csv
