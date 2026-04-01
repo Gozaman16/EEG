@@ -1,0 +1,21 @@
+EpiScreen Transfer Learning Pipeline - Summary Report
+=======================================================
+
+Model: Random Forest
+Patients: 5 synthetic CHB-MIT
+Sampling rate: 256 Hz, Window: 2s
+Features: 13 (Delta Power, Theta Power, Alpha Power, Beta Power, Gamma Power, Line Length, Zero Crossing Rate, Hjorth Activity, Hjorth Mobility, Hjorth Complexity, Kurtosis, Skewness, Sample Entropy)
+
+CHB-MIT Performance (LOPO CV):
+  Sensitivity: 0.994 ± 0.013
+  Specificity: 0.998 ± 0.004
+  AUC: 1.000 ± 0.000
+  FA rate: 4.0 ± 8.0 /hr
+  Detection latency: 0.0 sec
+
+Transfer to My Electrode:
+  False alarm rate: 0.0 /hr
+  Seizure sensitivity: 1.000
+  Detection latency: 0.0 sec
+
+Conclusion: Partially feasible
