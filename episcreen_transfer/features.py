@@ -33,7 +33,7 @@ def band_power(seg, fs=256):
     powers = []
     for name, (lo, hi) in bands.items():
         idx = np.logical_and(freqs >= lo, freqs <= hi)
-        powers.append(np.trapezoid(psd[idx], freqs[idx]) if np.any(idx) else 0)
+        powers.append(np.trapz(psd[idx], freqs[idx]) if np.any(idx) else 0)
     return powers  # 5 values
 
 
@@ -169,8 +169,8 @@ def leave_one_patient_out_cv(patient_data, model_type='rf'):
         train_X = np.vstack(train_X)
         train_y = np.concatenate(train_y)
 
-        test_X = patient_data[test_pid]['features']
-        test_y = patient_data[test_pid]['balanced_labels']
+        test_X = patient_data[test_pid]['all_features']
+        test_y = patient_data[test_pid]['all_labels']
 
         # Normalize features
         mean = train_X.mean(axis=0)
@@ -252,3 +252,6 @@ def compute_detection_latency(y_true, y_pred, fs=256, window_sec=2):
             seizure_start = None
 
     return np.mean(latencies) if latencies else float('nan')
+Pressing key...Stopping...
+
+Stop Agent

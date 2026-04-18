@@ -1,8 +1,8 @@
 """
-NeoGuard aEEG — Amplitude-Integrated EEG for Neonatal Seizure Monitoring
+NeoGuard aEEG â€” Amplitude-Integrated EEG for Neonatal Seizure Monitoring
 
 Pure signal-processing pipeline (no ML):
-  1. Bandpass filter 2–15 Hz (4th-order Butterworth)
+  1. Bandpass filter 2â€“15 Hz (4th-order Butterworth)
   2. Rectify (absolute value)
   3. Envelope detection (Hilbert transform)
   4. Downsample to 1 Hz
@@ -16,7 +16,7 @@ from scipy.signal import butter, sosfiltfilt, hilbert, decimate
 from pathlib import Path
 from dataclasses import dataclass
 
-# ─── Constants ───────────────────────────────────────────────────────────────
+# â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 FS = 256          # sampling rate (Hz)
 BAND = (2, 15)    # aEEG bandpass
 BUTTER_ORDER = 4
@@ -28,31 +28,31 @@ SEIZURE_RISE_UV = 10.0
 SEIZURE_DURATION_SEC = 30
 
 
-# ─── Data classes ────────────────────────────────────────────────────────────
+# â”€â”€â”€ Data classes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @dataclass
 class AEEGResult:
     """Container for the full aEEG analysis output."""
     time_sec: np.ndarray          # time axis (1 Hz)
-    envelope_1hz: np.ndarray      # aEEG envelope downsampled to 1 Hz (µV)
+    envelope_1hz: np.ndarray      # aEEG envelope downsampled to 1 Hz (ÂµV)
     upper_margin: np.ndarray      # 90th percentile per 60-s window
     lower_margin: np.ndarray      # 10th percentile per 60-s window
     classifications: list         # list of (start_sec, end_sec, label)
     seizure_alerts: list          # list of (start_sec, end_sec)
 
 
-# ─── 1. Bandpass filter ─────────────────────────────────────────────────────
+# â”€â”€â”€ 1. Bandpass filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def bandpass_filter(signal: np.ndarray, fs: int = FS,
                     low: float = BAND[0], high: float = BAND[1],
                     order: int = BUTTER_ORDER) -> np.ndarray:
     sos = butter(order, [low, high], btype="band", fs=fs, output="sos")
-    # Replace any NaN with 0 to prevent propagation through filter
-    clean = np.nan_to_num(signal, nan=0.0)
+    # Use interpolation to handle NaNs to avoid step artifacts
+    clean = pd.Series(signal).interpolate(limit_direction='both').bfill().ffill().values
     return sosfiltfilt(sos, clean)
 
 
-# ─── 2–4. Envelope & downsample ─────────────────────────────────────────────
+# â”€â”€â”€ 2â€“4. Envelope & downsample â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def compute_envelope(signal: np.ndarray, fs: int = FS) -> np.ndarray:
-    """Rectify → Hilbert envelope → downsample to 1 Hz."""
+    """Rectify â†’ Hilbert envelope â†’ downsample to 1 Hz."""
     rectified = np.abs(signal)
     analytic = hilbert(rectified)
     envelope = np.abs(analytic)
@@ -62,13 +62,13 @@ def compute_envelope(signal: np.ndarray, fs: int = FS) -> np.ndarray:
     kernel = np.ones(win) / win
     envelope = np.convolve(envelope, kernel, mode="same")
 
-    # Downsample: fs → 1 Hz
+    # Downsample: fs â†’ 1 Hz
     factor = int(fs / DOWNSAMPLE_TARGET)
     envelope_1hz = decimate(envelope, factor, zero_phase=True)
     return envelope_1hz
 
 
-# ─── 5. Upper / lower margins ───────────────────────────────────────────────
+# â”€â”€â”€ 5. Upper / lower margins â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def compute_margins(envelope_1hz: np.ndarray,
                     window_sec: int = MARGIN_WINDOW_SEC):
     n = len(envelope_1hz)
@@ -86,7 +86,7 @@ def compute_margins(envelope_1hz: np.ndarray,
     return upper, lower
 
 
-# ─── 6. Background classification ───────────────────────────────────────────
+# â”€â”€â”€ 6. Background classification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _LABELS = ("CNV", "DNV", "BS", "LV", "FT")
 
 def classify_window(upper_val: float, lower_val: float,
@@ -123,7 +123,7 @@ def classify_background(upper: np.ndarray, lower: np.ndarray):
     return segments
 
 
-# ─── 7. Seizure detection ───────────────────────────────────────────────────
+# â”€â”€â”€ 7. Seizure detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def detect_seizures(upper: np.ndarray, lower: np.ndarray,
                     narrow_uv: float = SEIZURE_NARROW_UV,
                     rise_uv: float = SEIZURE_RISE_UV,
@@ -131,8 +131,8 @@ def detect_seizures(upper: np.ndarray, lower: np.ndarray,
     """
     Rule-based seizure detection:
       A) Sudden narrowing of aEEG band (bandwidth < narrow_uv) followed
-         by a rise in amplitude — classic seizure signature.
-      B) Rapid rise in lower margin: lower margin increases by > 15 µV
+         by a rise in amplitude â€” classic seizure signature.
+      B) Rapid rise in lower margin: lower margin increases by > 15 ÂµV
          within a 30-second window AND lower margin exceeds rise_uv,
          sustained for at least min_dur seconds.
     """
@@ -164,7 +164,7 @@ def detect_seizures(upper: np.ndarray, lower: np.ndarray,
     # --- criterion B: rapid rise in lower margin ---
     # Compute rate of change of lower margin (smoothed over 10 s)
     lookback = 30  # seconds
-    rise_threshold = 15  # µV increase over lookback window
+    rise_threshold = 15  # ÂµV increase over lookback window
     in_event = False
     evt_start = 0
     for i in range(lookback, n):
@@ -196,9 +196,9 @@ def detect_seizures(upper: np.ndarray, lower: np.ndarray,
     return merged
 
 
-# ─── Main pipeline ───────────────────────────────────────────────────────────
+# â”€â”€â”€ Main pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def analyse_aeeg(raw_eeg: np.ndarray, fs: int = FS) -> AEEGResult:
-    """Full aEEG pipeline: raw EEG → trend + classification + alerts."""
+    """Full aEEG pipeline: raw EEG â†’ trend + classification + alerts."""
     filtered = bandpass_filter(raw_eeg, fs)
     envelope_1hz = compute_envelope(filtered, fs)
     time_sec = np.arange(len(envelope_1hz))
@@ -209,7 +209,7 @@ def analyse_aeeg(raw_eeg: np.ndarray, fs: int = FS) -> AEEGResult:
                       classifications, seizure_alerts)
 
 
-# ─── Synthetic neonatal EEG generator ────────────────────────────────────────
+# â”€â”€â”€ Synthetic neonatal EEG generator â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _random_freq_mix(duration_sec, fs, freq_range=(0.5, 15),
                      n_components=8, amp_range=(1, 10)):
     """Generate a mixture of sinusoids with random phases."""
@@ -240,27 +240,27 @@ def generate_synthetic_eeg(total_hours: float = 4.0, fs: int = FS,
     eeg = np.zeros(total_samples)
     events = []
 
-    # ── Schedule events (seconds) ──
-    # 0–40 min:  CNV
-    # 40–60 min: DNV
-    # 60–90 min: BS
-    # 90–92 min: seizure 1
-    # 92–150 min: CNV
-    # 150–152 min: seizure 2
-    # 152–200 min: DNV
-    # 200–201.5 min: seizure 3
-    # 201.5–240 min: CNV
+    # â”€â”€ Schedule events (seconds) â”€â”€
+    # 0â€“40 min:  CNV
+    # 40â€“60 min: DNV
+    # 60â€“90 min: BS
+    # 90â€“92 min: seizure 1
+    # 92â€“150 min: CNV
+    # 150â€“152 min: seizure 2
+    # 152â€“200 min: DNV
+    # 200â€“201.5 min: seizure 3
+    # 201.5â€“240 min: CNV
 
     schedule = [
-        (0,    2400,  "CNV"),      # 0–40 min
-        (2400, 3600,  "DNV"),      # 40–60 min
-        (3600, 5400,  "BS"),       # 60–90 min
-        (5400, 5520,  "SEIZURE"),  # 90–92 min
-        (5520, 9000,  "CNV"),      # 92–150 min
-        (9000, 9120,  "SEIZURE"),  # 150–152 min
-        (9120, 12000, "DNV"),      # 152–200 min
-        (12000,12090, "SEIZURE"),  # 200–201.5 min
-        (12090,14400, "CNV"),      # 201.5–240 min
+        (0,    2400,  "CNV"),      # 0â€“40 min
+        (2400, 3600,  "DNV"),      # 40â€“60 min
+        (3600, 5400,  "BS"),       # 60â€“90 min
+        (5400, 5520,  "SEIZURE"),  # 90â€“92 min
+        (5520, 9000,  "CNV"),      # 92â€“150 min
+        (9000, 9120,  "SEIZURE"),  # 150â€“152 min
+        (9120, 12000, "DNV"),      # 152â€“200 min
+        (12000,12090, "SEIZURE"),  # 200â€“201.5 min
+        (12090,14400, "CNV"),      # 201.5â€“240 min
     ]
 
     for start_s, end_s, etype in schedule:
@@ -270,22 +270,22 @@ def generate_synthetic_eeg(total_hours: float = 4.0, fs: int = FS,
         events.append((start_s, end_s, etype))
 
         if etype == "CNV":
-            # Continuous normal: 20–50 µV, broadband
+            # Continuous normal: 20â€“50 ÂµV, broadband
             seg = _random_freq_mix(dur, fs, (0.5, 15), 10, (3, 8))
             seg *= rng.uniform(20, 50) / (np.std(seg) + 1e-9)
             noise = rng.normal(0, 1.5, len(seg))
             eeg[i0:i1] = (seg + noise)[:i1 - i0]
 
         elif etype == "DNV":
-            # Discontinuous normal: alternating low (<5 µV) and
-            # medium-amplitude (15–40 µV) activity with ~10s cycling
+            # Discontinuous normal: alternating low (<5 ÂµV) and
+            # medium-amplitude (15â€“40 ÂµV) activity with ~10s cycling
             n_samps = i1 - i0
             seg = _random_freq_mix(dur, fs, (0.5, 12), 8, (1, 3))
             t_seg = np.arange(n_samps) / fs
             # Square-wave modulation: ~5s low, ~5s high
             mod = (np.sin(2 * np.pi * 0.1 * t_seg) > 0).astype(float)
-            # Low periods: ~2 µV noise; high periods: 10–20 µV
-            # (keeping upper margin in 10–25 range to distinguish from BS)
+            # Low periods: ~2 ÂµV noise; high periods: 10â€“20 ÂµV
+            # (keeping upper margin in 10â€“25 range to distinguish from BS)
             target_high = rng.uniform(10, 20)
             seg_norm = seg / (np.std(seg) + 1e-9)
             seg_out = np.where(mod > 0.5,
@@ -294,8 +294,8 @@ def generate_synthetic_eeg(total_hours: float = 4.0, fs: int = FS,
             eeg[i0:i1] = seg_out[:n_samps]
 
         elif etype == "BS":
-            # Burst suppression: alternating bursts (50–100 µV, 2–5 s)
-            # and suppression (<5 µV, 5–15 s)
+            # Burst suppression: alternating bursts (50â€“100 ÂµV, 2â€“5 s)
+            # and suppression (<5 ÂµV, 5â€“15 s)
             pos = i0
             while pos < i1:
                 # Suppression
@@ -317,13 +317,13 @@ def generate_synthetic_eeg(total_hours: float = 4.0, fs: int = FS,
                 pos = end_pos
 
         elif etype == "SEIZURE":
-            # Rhythmic 2–3 Hz, evolving amplitude, 30–120 sec
+            # Rhythmic 2â€“3 Hz, evolving amplitude, 30â€“120 sec
             t_seg = np.arange(i1 - i0) / fs
             freq = rng.uniform(2.0, 3.0)
-            # Evolving envelope: ramp up → plateau → taper
+            # Evolving envelope: ramp up â†’ plateau â†’ taper
             dur_seg = t_seg[-1] if len(t_seg) > 0 else 1
             env = np.sqrt(np.clip(np.sin(np.pi * t_seg / dur_seg), 0, None))
-            env = 30 + 70 * env  # 30–100 µV range
+            env = 30 + 70 * env  # 30â€“100 ÂµV range
             seizure_sig = env * np.sin(2 * np.pi * freq * t_seg)
             # Add harmonic
             seizure_sig += 0.3 * env * np.sin(2 * np.pi * 2 * freq * t_seg +
@@ -334,7 +334,7 @@ def generate_synthetic_eeg(total_hours: float = 4.0, fs: int = FS,
     return eeg, events
 
 
-# ─── I/O helpers ─────────────────────────────────────────────────────────────
+# â”€â”€â”€ I/O helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def load_eeg_csv(path: str | Path) -> np.ndarray:
     """Load single-channel EEG from CSV (one value per row or column named 'eeg')."""
     df = pd.read_csv(path)
@@ -368,3 +368,6 @@ def save_results(result: AEEGResult, raw_eeg: np.ndarray,
 
     # Raw EEG CSV
     pd.DataFrame({"eeg": raw_eeg}).to_csv(out / "raw_eeg.csv", index=False)
+Pressing key...Stopping...
+
+Stop Agent

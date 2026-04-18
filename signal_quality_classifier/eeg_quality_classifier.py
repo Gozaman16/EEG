@@ -36,7 +36,7 @@ import joblib
 warnings.filterwarnings("ignore")
 
 # ============================================================================
-# CONFIGURATION — change these two paths to use real data
+# CONFIGURATION â€” change these two paths to use real data
 # ============================================================================
 EEG_CSV_PATH = None      # e.g. "/path/to/eeg_recording.csv"
 LABEL_CSV_PATH = None    # e.g. "/path/to/labels.csv"
@@ -66,7 +66,7 @@ def generate_synthetic_eeg(fs=256, duration_min=30):
     # Theta (4-8 Hz)
     for f in np.linspace(4, 8, 4):
         eeg += 10 * np.sin(2 * np.pi * f * t + np.random.uniform(0, 2 * np.pi))
-    # Alpha (8-13 Hz) — dominant
+    # Alpha (8-13 Hz) â€” dominant
     for f in np.linspace(8, 13, 5):
         eeg += 15 * np.sin(2 * np.pi * f * t + np.random.uniform(0, 2 * np.pi))
     # Beta (13-30 Hz)
@@ -97,14 +97,14 @@ def generate_synthetic_eeg(fs=256, duration_min=30):
             segs.append((s, min(e, n_samples)))
         return segs
 
-    # Eye blinks — sharp positive deflections ~200-400 ms
+    # Eye blinks â€” sharp positive deflections ~200-400 ms
     for s, e in _random_segments(120, 0.2, 0.4):
         blink_len = e - s
         blink = 150 * np.exp(-0.5 * ((np.linspace(-3, 3, blink_len)) ** 2))
         eeg[s:e] += blink
         labels[s:e] = 0
 
-    # Muscle artifact — high-freq burst, 0.3-1 s
+    # Muscle artifact â€” high-freq burst, 0.3-1 s
     for s, e in _random_segments(80, 0.3, 1.0):
         muscle = 60 * np.random.randn(e - s)
         b_m, a_m = sig.butter(2, [20 / (fs / 2), 100 / (fs / 2)], btype="band")
@@ -114,19 +114,19 @@ def generate_synthetic_eeg(fs=256, duration_min=30):
         eeg[s:e] += muscle
         labels[s:e] = 0
 
-    # Electrode pop — sudden step, 0.1-0.3 s
+    # Electrode pop â€” sudden step, 0.1-0.3 s
     for s, e in _random_segments(40, 0.1, 0.3):
         pop_amp = np.random.choice([-1, 1]) * np.random.uniform(200, 500)
         eeg[s:e] += pop_amp
         labels[s:e] = 0
 
-    # 50 Hz power-line contamination — bursts of 2-5 s
+    # 50 Hz power-line contamination â€” bursts of 2-5 s
     for s, e in _random_segments(30, 2.0, 5.0):
         line = 40 * np.sin(2 * np.pi * 50 * t[s:e])
         eeg[s:e] += line
         labels[s:e] = 0
 
-    # Head movement — slow drift, 1-3 s
+    # Head movement â€” slow drift, 1-3 s
     for s, e in _random_segments(50, 1.0, 3.0):
         drift = 80 * np.cumsum(np.random.randn(e - s)) / fs
         eeg[s:e] += drift
@@ -235,7 +235,7 @@ def extract_features(window, fs=256):
 
     # --- Frequency domain (Welch PSD) ---
     freqs, psd = sig.welch(window, fs=fs, nperseg=min(256, len(window)))
-    feats["total_power"] = np.trapezoid(psd, freqs)
+    feats["total_power"] = np.trapz(psd, freqs)
 
     bands = {
         "delta": (0.5, 4),
@@ -246,7 +246,7 @@ def extract_features(window, fs=256):
     }
     for name, (lo, hi) in bands.items():
         idx = np.logical_and(freqs >= lo, freqs <= hi)
-        feats[f"{name}_power"] = np.trapezoid(psd[idx], freqs[idx]) if np.any(idx) else 0
+        feats[f"{name}_power"] = np.trapz(psd[idx], freqs[idx]) if np.any(idx) else 0
 
     total = feats["total_power"] if feats["total_power"] > 0 else 1e-12
     feats["theta_beta_ratio"] = feats["theta_power"] / max(feats["beta_power"], 1e-12)
@@ -279,7 +279,7 @@ def extract_all_features(windows, fs=256):
 def train_and_select(X, y):
     """Train RF, SVM, GBT with 5-fold CV; return best model & results."""
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
+        X, y, test_size=0.2, shuffle=False
     )
 
     scaler = StandardScaler()
@@ -323,16 +323,16 @@ def train_and_select(X, y):
             "y_pred": y_pred,
             "y_proba": y_proba,
         }
-        print(f"  {name:20s}  CV-F1={scores.mean():.3f}±{scores.std():.3f}  "
+        print(f"  {name:20s}  CV-F1={scores.mean():.3f}Â±{scores.std():.3f}  "
               f"Test F1={f1:.3f}  AUC={auc:.3f}")
 
-    # Select best by test F1
-    best_name = max(results, key=lambda k: results[k]["test_f1"])
+    # Select best by CV F1
+    best_name = max(results, key=lambda k: results[k]["cv_f1_mean"])
     best = results[best_name]
 
     # If F1 < 0.85, try grid search on the best model type
     if best["test_f1"] < 0.85:
-        print(f"\n  F1 < 0.85 — running GridSearchCV on {best_name}...")
+        print(f"\n  F1 < 0.85 â€” running GridSearchCV on {best_name}...")
         if best_name == "RandomForest":
             param_grid = {
                 "n_estimators": [200, 400],
@@ -361,7 +361,7 @@ def train_and_select(X, y):
         f1 = f1_score(y_test, y_pred)
 
         if f1 > best["test_f1"]:
-            print(f"  GridSearch improved F1: {best['test_f1']:.3f} → {f1:.3f}")
+            print(f"  GridSearch improved F1: {best['test_f1']:.3f} â†’ {f1:.3f}")
             best = {
                 "model": gs.best_estimator_,
                 "test_f1": f1,
@@ -394,8 +394,8 @@ def plot_raw_eeg(t, eeg, sample_labels, fs, out_dir):
         i = j
 
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Amplitude (µV)")
-    ax.set_title("Raw EEG — Blue: Clean, Red: Artifact (first 30 s)")
+    ax.set_ylabel("Amplitude (ÂµV)")
+    ax.set_title("Raw EEG â€” Blue: Clean, Red: Artifact (first 30 s)")
     ax.set_xlim(t[0], t[min(n, len(t) - 1)])
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "fig1_raw_eeg.png"), dpi=300)
@@ -478,13 +478,13 @@ def plot_example_windows(windows, win_labels, fs, out_dir):
         axes[0, col].plot(t_w, w, color=color, linewidth=0.8)
         axes[0, col].set_title(f"{label} Window (Time Domain)")
         axes[0, col].set_xlabel("Time (s)")
-        axes[0, col].set_ylabel("Amplitude (µV)")
+        axes[0, col].set_ylabel("Amplitude (ÂµV)")
 
         freqs, psd = sig.welch(w, fs=fs, nperseg=min(256, len(w)))
         axes[1, col].semilogy(freqs, psd, color=color, linewidth=1.2)
         axes[1, col].set_title(f"{label} Window (PSD)")
         axes[1, col].set_xlabel("Frequency (Hz)")
-        axes[1, col].set_ylabel("Power (µV²/Hz)")
+        axes[1, col].set_ylabel("Power (ÂµVÂ²/Hz)")
 
     fig.suptitle("Example Windows: Clean vs Artifact", fontsize=14)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -621,3 +621,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+Pressing key...Getting DOM...Stopping...
+
+Stop Agent
