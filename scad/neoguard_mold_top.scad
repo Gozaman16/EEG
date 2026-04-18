@@ -1,55 +1,62 @@
-// ============================================================
-// NeoGuard Neonatal 15 mm EEG Electrode — TOP MOLD PIECE
-// ============================================================
+// ═════════════════════════════════════════════════════════════
+// NeoGuard 15 mm Neonatal EEG Electrode — TOP MOLD PIECE
+// ─────────────────────────────────────────────────────────────
+// SLA PRINT:
+//   Bottom mold: natural orientation (cavity up)
+//   Top mold:    FLIPPED (pins up — self-supporting)
+// POST-PROCESS:
+//   1. IPA wash 2× (5 min each)
+//   2. UV post-cure 2 h + 60 °C
+//   3. Air dry 24 h
+//   4. Clear acrylic spray 2–3 thin coats, 15 min between
+//      (barrier against silicone cure inhibition)
+// CAST:
+//   Silicone: Ecoflex 00-50 (platinum-cure, Shore 00-50)
+//   Sequential pour: bottom first (4 h @ 25 °C or 1 h @ 45 °C)
+//   Between silicone layers: 1 thin coat acrylic spray, 15 min
+//   NEVER use vaseline — inhibits platinum cure
+// ═════════════════════════════════════════════════════════════
 
 include <params.scad>
 
 neoguard_top();
 
 module neoguard_top() {
-    difference() {
-        // Outer lid
-        cylinder(d = NG_MOLD_OD, h = NG_TOP_H, center = false);
+  mold_h = NG_TOP_H;
+  difference() {
+    // Outer lid body
+    cylinder(d = NG_MOLD_OD, h = mold_h, center = false);
 
-        // Internal top-half cavity
-        translate([0, 0, WALL])
-            ng_top_cavity();
+    // Upper silicone cavity
+    translate([0, 0, -0.01])
+      cylinder(d = NG_OD + CLEARANCE, h = mold_h - WALL + 0.02, center = false);
 
-        // Pour hole
-        translate([0, 0, NG_TOP_H - NG_POUR_D])
-            cylinder(d = NG_POUR_D, h = NG_POUR_D + 0.1, center = false);
+    // Silicone pour hole (centre)
+    translate([0, 0, mold_h - NG_POUR_D])
+      cylinder(d = NG_POUR_D, h = NG_POUR_D + 0.1, center = false);
 
-        // Vent holes (2×)
-        for (a = [90, 270])
-            rotate([0, 0, a])
-                translate([(NG_MOLD_OD/2 - WALL - 2), 0, NG_TOP_H - 3])
-                    cylinder(d = VENT_D, h = WALL + 3.1, center = false);
+    // Vent holes (2×)
+    for (a = [90, 270])
+      rotate([0, 0, a])
+        translate([(NG_MOLD_OD/2 - WALL - 2), 0, mold_h - 3])
+          cylinder(d = VENT_D, h = WALL + 3.1, center = false);
 
-        // Reservoir fill port
-        translate([NG_RES_OD/2 - 1.5, 0, NG_TOP_H - 5])
-            cylinder(d = 2.0, h = WALL + 5.1, center = false);
-
-        // Cable exit (upper)
-        translate([NG_MOLD_OD/2 - NG_CABLE_D + 0.1, 0, WALL])
-            cube([NG_CABLE_D + 0.2, NG_CABLE_W_TOP,
-                  NG_TOP_H - WALL + 0.1], center = false);
-    }
-
-    // Alignment pins (4×, male)
-    for (i = [0 : PIN_R - 1])
-        rotate([0, 0, i * 360 / PIN_R + 45])
-            translate([(NG_MOLD_OD/2 - WALL - PIN_D/2 - 0.4), 0, 0])
-                cylinder(d = PIN_D, h = PIN_H + WALL, center = false);
-}
-
-module ng_top_cavity() {
-    top_cav_h = NG_H - NG_BOT_H;
-
-    // Main cylinder
-    cylinder(d = NG_OD, h = top_cav_h + 0.1, center = false);
-
-    // Inner hole of reservoir ring (leave ring as solid protrusion)
+    // Refill port — 2 mm through-hole over funnel centre
     translate([0, 0, -0.05])
-        cylinder(d = NG_RES_ID - CLEARANCE,
-                 h = NG_RES_H + 0.1, center = false);
+      cylinder(d = REFILL_PORT_D, h = mold_h + 0.1, center = false);
+
+    // Pry slots at parting line
+    pry_slots(NG_MOLD_OD, mold_h);
+  }
+
+  // Alignment pins (3×, conical, male)
+  for (a = NG_PIN_ANGLES)
+    rotate([0, 0, a])
+      translate([(NG_MOLD_OD/2 - WALL - NG_PIN_D_BASE/2 - 0.5), 0,
+                 -NG_PIN_H + 0.01])
+        alignment_pin_male(NG_PIN_D_BASE, NG_PIN_D_TIP, NG_PIN_H);
+
+  // Silicone interlock protrusions (groove, key socket, service gap)
+  translate([0, 0, 0])
+    interlock_upper_protrusions(NG_OD);
 }
