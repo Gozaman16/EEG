@@ -1,73 +1,80 @@
-// ============================================================
-// HairSite Hair-Contact 24 mm EEG Electrode — TOP MOLD PIECE
-// ============================================================
+// ═════════════════════════════════════════════════════════════
+// HairSite 24 mm Hair-Contact EEG Electrode — TOP MOLD PIECE
+// ─────────────────────────────────────────────────────────────
+// SLA PRINT:
+//   Bottom mold: natural orientation (cavity up)
+//   Top mold:    FLIPPED (pins up — self-supporting)
+// POST-PROCESS:
+//   1. IPA wash 2× (5 min each)
+//   2. UV post-cure 2 h + 60 °C
+//   3. Air dry 24 h
+//   4. Clear acrylic spray 2–3 thin coats, 15 min between
+//      (barrier against silicone cure inhibition)
+// CAST:
+//   Silicone: Ecoflex 00-50 (platinum-cure, Shore 00-50)
+//   Sequential pour: bottom first (4 h @ 25 °C or 1 h @ 45 °C)
+//   Between silicone layers: 1 thin coat acrylic spray, 15 min
+//   NEVER use vaseline — inhibits platinum cure
+// ═════════════════════════════════════════════════════════════
 
 include <params.scad>
 
 hairsite_top();
 
 module hairsite_top() {
-    difference() {
-        // Outer lid
-        cylinder(d = HS_MOLD_OD, h = HS_TOP_H, center = false);
+  mold_h = HS_TOP_H;
+  difference() {
+    cylinder(d = HS_MOLD_OD, h = mold_h, center = false);
 
-        // Internal top-half cavity
-        translate([0, 0, WALL])
-            hs_top_cavity();
+    // Upper silicone cavity
+    translate([0, 0, -0.01])
+      cylinder(d = HS_OD + CLEARANCE, h = mold_h - WALL + 0.02, center = false);
 
-        // Pour hole
-        translate([0, 0, HS_TOP_H - HS_POUR_D])
-            cylinder(d = HS_POUR_D, h = HS_POUR_D + 0.1, center = false);
+    // Silicone pour hole
+    translate([0, 0, mold_h - HS_POUR_D])
+      cylinder(d = HS_POUR_D, h = HS_POUR_D + 0.1, center = false);
 
-        // Vent holes (2×)
-        for (a = [90, 270])
-            rotate([0, 0, a])
-                translate([(HS_MOLD_OD/2 - WALL - 2), 0, HS_TOP_H - 4])
-                    cylinder(d = VENT_D, h = WALL + 4.1, center = false);
+    // Vent holes
+    for (a = [90, 270])
+      rotate([0, 0, a])
+        translate([(HS_MOLD_OD/2 - WALL - 2), 0, mold_h - 4])
+          cylinder(d = VENT_D, h = WALL + 4.1, center = false);
 
-        // Reservoir fill port
-        translate([EP_RES_OD/2 - 2, 0, HS_TOP_H - 6])
-            cylinder(d = 2.0, h = WALL + 6.1, center = false);
-
-        // Cable exit upper
-        translate([HS_MOLD_OD/2 - EP_CABLE_D + 0.1, 0, WALL])
-            cube([EP_CABLE_D + 0.2, EP_CABLE_W_TOP,
-                  HS_TOP_H - WALL + 0.1], center = false);
-
-        // Through-holes for pin tips to poke through top mold
-        // (allows even longer pins if needed; also serves as guide)
-        translate([0, 0, WALL])
-            pin_tip_holes();
-    }
-
-    // Alignment pins (4×, male)
-    for (i = [0 : PIN_R - 1])
-        rotate([0, 0, i * 360 / PIN_R + 45])
-            translate([(HS_MOLD_OD/2 - WALL - PIN_D/2 - 0.5), 0, 0])
-                cylinder(d = PIN_D, h = PIN_H + WALL, center = false);
-}
-
-module hs_top_cavity() {
-    top_cav_h = HS_H - HS_BOT_H;
-
-    cylinder(d = HS_OD, h = top_cav_h + 0.1, center = false);
-
-    // Reservoir ring inner hole
+    // Refill port
     translate([0, 0, -0.05])
-        cylinder(d = EP_RES_ID - CLEARANCE,
-                 h = EP_RES_H + 0.1, center = false);
+      cylinder(d = REFILL_PORT_D, h = mold_h + 0.1, center = false);
+
+    // Pin-tip clearance holes (penetration pins are tall — lid needs
+    // guide holes so pin tips can poke through if HS_PIN_H > HS_BOT_H).
+    pin_tip_holes();
+
+    // Pry slots at parting line
+    pry_slots(HS_MOLD_OD, mold_h);
+  }
+
+  // Alignment pins (4×, conical, male)
+  for (a = PIN_ANGLES)
+    rotate([0, 0, a])
+      translate([(HS_MOLD_OD/2 - WALL - PIN_D_BASE/2 - 0.5), 0,
+                 -PIN_H + 0.01])
+        alignment_pin_male(PIN_D_BASE, PIN_D_TIP, PIN_H);
+
+  // Silicone interlock protrusions
+  translate([0, 0, 0])
+    interlock_upper_protrusions(HS_OD);
 }
 
+// ─────────────────────────────────────────────────────────────
+// Guide holes through the top lid for long penetration pins.
+// ─────────────────────────────────────────────────────────────
 module pin_tip_holes() {
-    // Guide holes for pin tip protrusion through lid
-    top_cav_h = HS_H - HS_BOT_H;
-    pin_z     = HS_PIN_H - HS_BOT_H;  // height above parting plane
-
-    if (pin_z > 0) {
-        cylinder(d = HS_PIN_D + 0.2, h = top_cav_h + 0.1, center = false);
-        for (i = [0 : 5])
-            rotate([0, 0, i * 60])
-                translate([HS_PIN_RAD, 0, 0])
-                    cylinder(d = HS_PIN_D + 0.2, h = top_cav_h + 0.1, center = false);
-    }
+  pin_z = HS_PIN_H - HS_BOT_H;                // height above parting plane
+  if (pin_z > 0) {
+    translate([0, 0, -0.05])
+      cylinder(d = HS_PIN_D + CLEARANCE, h = HS_TOP_H + 0.1, center = false);
+    for (i = [0 : 5])
+      rotate([0, 0, i * 60])
+        translate([HS_PIN_RAD, 0, -0.05])
+          cylinder(d = HS_PIN_D + CLEARANCE, h = HS_TOP_H + 0.1, center = false);
+  }
 }
