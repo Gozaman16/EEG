@@ -34,6 +34,7 @@ from features import (
     leave_one_patient_out_cv,
     compute_detection_latency,
     create_rf_model,
+    create_cnn_model,
 )
 from visualization import (
     fig1_seizure_vs_clean,
@@ -134,7 +135,10 @@ def main():
     norm_std = all_train_X.std(axis=0) + 1e-10
     all_train_X_norm = (all_train_X - norm_mean) / norm_std
 
-    final_model = create_rf_model()
+    if best_name == 'Random Forest':
+        final_model = create_rf_model()
+    else:
+        final_model = create_cnn_model()
     final_model.fit(all_train_X_norm, all_train_y)
 
     # Save model
@@ -245,10 +249,10 @@ def main():
     aucs = [r['roc_auc'] for r in best_results]
     fa_rates_cv = [r['false_alarm_rate_per_hour'] for r in best_results]
 
-    print(f"  Sensitivity:  {np.mean(sensitivities):.3f} ± {np.std(sensitivities):.3f}")
-    print(f"  Specificity:  {np.mean(specificities):.3f} ± {np.std(specificities):.3f}")
-    print(f"  AUC:          {np.mean(aucs):.3f} ± {np.std(aucs):.3f}")
-    print(f"  FA rate (CV): {np.mean(fa_rates_cv):.1f} ± {np.std(fa_rates_cv):.1f} /hr")
+    print(f"  Sensitivity:  {np.mean(sensitivities):.3f} Â± {np.std(sensitivities):.3f}")
+    print(f"  Specificity:  {np.mean(specificities):.3f} Â± {np.std(specificities):.3f}")
+    print(f"  AUC:          {np.mean(aucs):.3f} Â± {np.std(aucs):.3f}")
+    print(f"  FA rate (CV): {np.mean(fa_rates_cv):.1f} Â± {np.std(fa_rates_cv):.1f} /hr")
 
     all_latencies = []
     for r in best_results:
@@ -337,10 +341,10 @@ def main():
         f.write(f"Sampling rate: {FS} Hz, Window: {WINDOW_SEC}s\n")
         f.write(f"Features: {len(FEATURE_NAMES)} ({', '.join(FEATURE_NAMES)})\n\n")
         f.write("CHB-MIT Performance (LOPO CV):\n")
-        f.write(f"  Sensitivity: {np.mean(sensitivities):.3f} ± {np.std(sensitivities):.3f}\n")
-        f.write(f"  Specificity: {np.mean(specificities):.3f} ± {np.std(specificities):.3f}\n")
-        f.write(f"  AUC: {np.mean(aucs):.3f} ± {np.std(aucs):.3f}\n")
-        f.write(f"  FA rate: {np.mean(fa_rates_cv):.1f} ± {np.std(fa_rates_cv):.1f} /hr\n")
+        f.write(f"  Sensitivity: {np.mean(sensitivities):.3f} Â± {np.std(sensitivities):.3f}\n")
+        f.write(f"  Specificity: {np.mean(specificities):.3f} Â± {np.std(specificities):.3f}\n")
+        f.write(f"  AUC: {np.mean(aucs):.3f} Â± {np.std(aucs):.3f}\n")
+        f.write(f"  FA rate: {np.mean(fa_rates_cv):.1f} Â± {np.std(fa_rates_cv):.1f} /hr\n")
         f.write(f"  Detection latency: {np.nanmean(all_latencies):.1f} sec\n\n")
         f.write("Transfer to My Electrode:\n")
         f.write(f"  False alarm rate: {fa_rate:.1f} /hr\n")
@@ -352,3 +356,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+Pressing key...Stopping...
+
+Stop Agent
